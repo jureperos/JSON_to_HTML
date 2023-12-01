@@ -1,7 +1,85 @@
 import * as fs from "fs"
 
-const data = JSON.parse(fs.readFileSync("./primeri/pageNotFound.json"))
+const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
+console.log(data)
 
+class HtmlParser {
+    constructor(jsonData) {
+        this.data = jsonData
+        this.howDeep = 1
+        this.allThings = []
+        this.theKey = []
+    }
+
+    traverse() {
+        for (const key in this.data) {
+            const value = this.data[key]
+
+            this.allThings.push([this.howDeep, `<${key}>`])
+            this.theKey.push([this.howDeep, `</${key}>`])
+
+            if (typeof value === "object") {
+                this.handleObject(key, value)
+
+            } else {
+                this.handleValue(key, value)
+            }
+        }
+
+    }
+
+    handleObject(key, value) {
+        if (value.hasOwnProperty("meta")) {
+            this.handleMeta(key, value)
+        } else if (Array.isArray(value)) {
+            this.handleArray(key, value)
+        } else {
+            this.recursiveCall(key, value)
+        }
+    }
+
+    handleValue(key, value) {
+        console.log(key, value)
+        const popedKey = this.allThings.pop()
+        const poppedTheKey = this.theKey.pop()
+
+        this.allThings.push([this.howDeep, `${popedKey[1]}${value}${poppedTheKey[1]}`])
+        this.theKey.push("filler")
+    }
+
+    handleMeta(key, value) {
+        for (const metaKey in value.meta) {
+            if (metaKey === "charset") {
+                this.allThings.push([this.howDeep, `<meta charset="${value.meta.charset}>"`])
+            } else {
+                console.log("help me")
+                delete value.meta
+            }
+        }
+    }
+
+    handleArray(key, value) {
+
+        value.forEach((element) => {
+            let lineString = `<${key}`
+            for (const elementKey in element) {
+                lineString += ` ${elementKey}="${element[elementKey]}"`
+
+            }
+            lineString += ">"
+            this.allThings.push([howDeep, lineString])
+        })
+    }
+
+    recursiveCall(key, value) {
+        this.traverse(value)
+    }
+}
+
+const parser = new HtmlParser(data)
+parser.traverse();
+
+/*
 //globinomer
 let howDeep = 1
 
@@ -150,4 +228,4 @@ console.log(finishedArray)
 
 const arrayToString = finishedArray.join("\n")
 fs.writeFileSync("./onej.html", arrayToString)
-
+*/
