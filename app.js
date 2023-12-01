@@ -12,7 +12,6 @@ let theKey = []
 
 function traverse(obj) {
 
-
     for (const key in obj) {
         const value = obj[key]
 
@@ -70,21 +69,25 @@ function traverse(obj) {
 
         if (typeof value === "object") {
 
-            //if (value.hasOwnProperty("meta")) {
-            //    howDeep++
-            //    for (const key in value.meta) {
-            //        if (key === "charset") {
-            //            allThings.push([howDeep, `<meta charset="${value.meta.charset}>"`])
+            if (value.hasOwnProperty("meta")) {
+                howDeep++
+                let attributeString = ``
+                for (const metaKey in value.meta) {
+                        console.log(metaKey)
+                    if (metaKey=== "charset") {
+                        allThings.push([howDeep, `<meta charset="${value.meta.charset}>"`])
 
-            //        }
-            //        console.log(key)
-            //        if (key === "keywords" || key === "author"){
-            //            allThings.push([howDeep, `<meta name="${key}" content="${value.meta[key]}">`])
-            //        }
-            //    }
-            //    delete value.meta
-            //    howDeep--
-            //}
+                    } else {
+                        for (const nestedMetaKey in value.meta[metaKey]) {
+                            //console.log(nestedMetaKey)
+                            attributeString += `<meta name="${nestedMetaKey}" content="${value.meta[metaKey]}">`
+                            allThings.push([howDeep, attributeString])
+
+                        }
+                    }
+                }
+                howDeep--
+            }
 
 
 
