@@ -1,11 +1,9 @@
 import * as fs from "fs"
 
-const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
-
-let metaStringy = ""
+const data = JSON.parse(fs.readFileSync("./primeri/pageNotFound.json"))
 
 //globinomer
-let howDeep = 0
+let howDeep = 1
 
 // allThings je glavni arr; theKey shranjuje enake vrednosti katere nato
 // uporabim za closing tage
@@ -14,79 +12,139 @@ let theKey = []
 
 function traverse(obj) {
 
-    if (obj.doctype === "html") {
-        delete obj.doctype
-    }
 
-    if (obj.hasOwnProperty("language")) {
-        delete obj.language
-    }
-
-    if (obj.hasOwnProperty("meta")) {
-
-        for (const key in obj.meta) {
-            if (key === "charset") {
-                metaStringy += `<meta charset=${obj.meta.charset}>\n`
-            } else {
-                metaStringy += `<meta name=${key} content=${obj.meta[key]}>\n`
-            }
-        }
-        delete obj.meta
-    }
     for (const key in obj) {
         const value = obj[key]
 
-        if (Array.isArray(value)) {
-            value.forEach((element) => {
-                metaStringy += `\n<${key}`
-                for (const elementKey in element) {
-                    metaStringy += ` ${elementKey}="${element[elementKey]}"`
 
-                }
-                metaStringy += ">\n"
-            })
-        return
+        if (obj.doctype === "html" && obj.hasOwnProperty("language")) {
+            allThings.pop()
+            const doctype = "<!DOCTYPE> html"
+            const htmlString = `<${obj.doctype} lang="${obj.language}">`
+
+            allThings.unshift([howDeep - 1, doctype])
+            allThings.push([howDeep - 1, htmlString])
+
+            delete obj.doctype
+            delete obj.language
+            continue
         }
 
-       // console.log(howDeep, [key])
+        if (obj.doctype === "html") {
 
-        allThings.push([howDeep, key])
-        theKey.push(["keyed", key])
+            const doctype = "<!DOCTYPE> html"
+            allThings.unshift([howDeep - 1, doctype])
+            allThings.push([howDeep - 1, "<html>"])
+            delete obj.doctype
+            continue
 
+        }
+
+        allThings.push([howDeep, `<${key}>`])
+        theKey.push([howDeep, `</${key}>`])
+
+        if (value.hasOwnProperty("attributes")) {
+            allThings.pop()
+            let attributeString = ``
+
+            for (const attributeKey in value.attributes) {
+                if (attributeKey === "style")  {
+                    for (const styleKey in value.attributes.style) {
+
+                        attributeString += `${styleKey}="${value.attributes.style[styleKey]}" `
+                    }
+
+                    delete value.attributes
+                }
+
+                if (attributeKey != "style" && !value.attributes.hasOwnProperty("style")) {
+                    attributeString = `${attributeKey}="${value.attributes[attributeKey]}" ${attributeString}`
+
+                    delete value.attributes
+                }
+
+            }
+
+            allThings.push([howDeep, `<${key} ${attributeString}>`])
+        }
 
         if (typeof value === "object") {
+
+            //if (value.hasOwnProperty("meta")) {
+            //    howDeep++
+            //    for (const key in value.meta) {
+            //        if (key === "charset") {
+            //            allThings.push([howDeep, `<meta charset="${value.meta.charset}>"`])
+
+            //        }
+            //        console.log(key)
+            //        if (key === "keywords" || key === "author"){
+            //            allThings.push([howDeep, `<meta name="${key}" content="${value.meta[key]}">`])
+            //        }
+            //    }
+            //    delete value.meta
+            //    howDeep--
+            //}
+
+
+
+            if (Array.isArray(value)) {
+
+                allThings.pop()
+                theKey.pop()
+
+                value.forEach((element) => {
+                    let lineString = `<${key}`
+                    for (const elementKey in element) {
+                        lineString += ` ${elementKey}="${element[elementKey]}"`
+
+                    }
+                    lineString += ">"
+                    allThings.push([howDeep, lineString])
+                })
+                continue
+            }
+
             howDeep++
             traverse(value)
         } else {
             const popedKey = allThings.pop()
-
-            if (popedKey[1] != "href" && popedKey[1] != "rel" && popedKey[1] != "type") {
-                allThings.push([howDeep, `<${popedKey[1]}>${value}</${popedKey[1]}>`])
-
-            } else allThings.push([howDeep, `${popedKey[1]}="${value}"`])
-
+            const poppedTheKey = theKey.pop()
+            allThings.push([howDeep, `${popedKey[1]}${value}${poppedTheKey[1]}`])
+            theKey.push("filler")
         }
+
         const nestedItem = theKey.pop()
-
-        //console.log(nestedItem[1])
-        //allThings.push(nestedItem)
-        if (nestedItem[1] != "href" && nestedItem[1] != "rel" && nestedItem[1] != "type") {
-            allThings.push(nestedItem)
-        }
-
-
+        allThings.push(nestedItem)
     }
     howDeep--
 }
 
-traverse(data)
-console.log(metaStringy)
-console.log(allThings, "\n------------------")
-//console.log(theKey)
 
-allThings.forEach((element) => {
-    //console.log(element[1])
-    //fs.writeFileSync()
+
+traverse(data)
+
+allThings.push([0, "</html>"])
+
+function arrayFilterCondition(element) {
+    return element !== "filler"
+}
+
+const filteredArray = allThings.filter(arrayFilterCondition)
+console.log(filteredArray)
+
+const finishedArray = filteredArray.map((element) => {
+    let indent = ""
+    const indentNum = parseInt(element[0])
+    for (let i = 0; i < indentNum; i++) {
+        indent += "    "
+    }
+
+    return indent + element[1]
 })
 
+console.log(finishedArray)
+
+const arrayToString = finishedArray.join("\n")
+fs.writeFileSync("./onej.html", arrayToString)
 
