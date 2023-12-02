@@ -1,61 +1,89 @@
 import * as fs from "fs"
 
 const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
-console.log(data)
 
 class HtmlParser {
     constructor(jsonData) {
         this.data = jsonData
-        this.howDeep = 1
-        this.allThings = []
-        this.theKey = []
+        this.howDeep = 0
+        this.keyTags = [[]]
+        this.keyTagsCopy = [[]]
     }
 
-    traverse() {
-        for (const key in this.data) {
-            const value = this.data[key]
+    traverse(obj) {
+        for (const key in obj) {
+            const value = obj[key]
 
-            this.allThings.push([this.howDeep, `<${key}>`])
-            this.theKey.push([this.howDeep, `</${key}>`])
+            this.keyTags.push([this.howDeep, `<${key}>`])
+            this.keyTagsCopy.push([this.howDeep, `</${key}>`])
+
 
             if (typeof value === "object") {
-                this.handleObject(key, value)
+                //now rekurzivni klic pomeni da gremo stopnjo globlje
+                if (key === "meta") {this.handleMeta(key, value)}
+                this.howDeep--
+                this.traverse(value)
 
             } else {
                 this.handleValue(key, value)
+                this.deleteLeaf(key, obj)
             }
         }
-
-    }
-
-    handleObject(key, value) {
-        if (value.hasOwnProperty("meta")) {
-            this.handleMeta(key, value)
-        } else if (Array.isArray(value)) {
-            this.handleArray(key, value)
-        } else {
-            this.recursiveCall(key, value)
-        }
+        // Konec enega rekurzivnega klica pomeni, da se globina zmanjša
+        this.howDeep++
     }
 
     handleValue(key, value) {
-        console.log(key, value)
-        const popedKey = this.allThings.pop()
-        const poppedTheKey = this.theKey.pop()
 
-        this.allThings.push([this.howDeep, `${popedKey[1]}${value}${poppedTheKey[1]}`])
-        this.theKey.push("filler")
+        const poppedKeyTag = this.keyTags.pop()
+        const poppedKeyTagCopy = this.keyTagsCopy.pop()
+
+        this.keyTags.push([this.howDeep, `${poppedKeyTag[1]}${value}${poppedKeyTagCopy[1]}`])
+        this.keyTagsCopy.push("filler")
+    }
+
+    deleteLeaf(key, obj) {
+        delete obj[key]
     }
 
     handleMeta(key, value) {
-        for (const metaKey in value.meta) {
-            if (metaKey === "charset") {
-                this.allThings.push([this.howDeep, `<meta charset="${value.meta.charset}>"`])
-            } else {
-                console.log("help me")
-                delete value.meta
-            }
+        this.howDeep--
+
+        const lastTag = this.keyTags[this.keyTags.length -1][1]
+        if (lastTag === "<meta>") {
+            this.keyTags.pop()
         }
+
+        for (const metaKey in value) {
+            const metaValue = value[metaKey]
+            console.log("metakey: ", metaKey, "metaValue: ", metaValue, "value: ", value)
+
+            if (metaKey === "charset") {
+                this.keyTags.push([this.howDeep, `<meta charset="${metaValue}>"`])
+                this.deleteLeaf(metaKey, value)
+            } else if (typeof metaValue === "object") {
+
+                this.keyTags.push([this.howDeep, metaKey])
+                this.howDeep++
+                this.handleMeta("kmet", metaValue)
+
+
+            } else {
+                console.log(this.keyTags)
+                //console.log(metaKey, value)
+
+                console.log(metaKey, value)
+                this.handleMetaValue(metaKey, value)
+                this.deleteLeaf(metaKey, value)
+            }
+
+        }
+        this.howDeep++
+    }
+
+    handleMetaValue(key, value) {
+        this.keyTags.push(this.howDeep, `<meta name="${key}" content="${value[key]}"`)
+
     }
 
     handleArray(key, value) {
@@ -67,26 +95,29 @@ class HtmlParser {
 
             }
             lineString += ">"
-            this.allThings.push([howDeep, lineString])
+            this.keyTags.push([this.howDeep, lineString])
         })
+
     }
 
-    recursiveCall(key, value) {
-        this.traverse(value)
+    parse() {
+        this.traverse(this.data)
     }
 }
 
 const parser = new HtmlParser(data)
-parser.traverse();
+parser.parse()
+console.log(parser.keyTags)
+
 
 /*
 //globinomer
 let howDeep = 1
 
-// allThings je glavni arr; theKey shranjuje enake vrednosti katere nato
+// keyTags je glavni arr; keyTagsCopy shranjuje enake vrednosti katere nato
 // uporabim za closing tage
-let allThings = []
-let theKey = []
+let keyTags = []
+let keyTagsCopy = []
 
 function traverse(obj) {
 
@@ -95,12 +126,12 @@ function traverse(obj) {
 
 
         if (obj.doctype === "html" && obj.hasOwnProperty("language")) {
-            allThings.pop()
+            keyTags.pop()
             const doctype = "<!DOCTYPE> html"
             const htmlString = `<${obj.doctype} lang="${obj.language}">`
 
-            allThings.unshift([howDeep - 1, doctype])
-            allThings.push([howDeep - 1, htmlString])
+            keyTags.unshift([howDeep - 1, doctype])
+            keyTags.push([howDeep - 1, htmlString])
 
             delete obj.doctype
             delete obj.language
@@ -110,18 +141,18 @@ function traverse(obj) {
         if (obj.doctype === "html") {
 
             const doctype = "<!DOCTYPE> html"
-            allThings.unshift([howDeep - 1, doctype])
-            allThings.push([howDeep - 1, "<html>"])
+            keyTags.unshift([howDeep - 1, doctype])
+            keyTags.push([howDeep - 1, "<html>"])
             delete obj.doctype
             continue
 
         }
 
-        allThings.push([howDeep, `<${key}>`])
-        theKey.push([howDeep, `</${key}>`])
+        keyTags.push([howDeep, `<${key}>`])
+        keyTagsCopy.push([howDeep, `</${key}>`])
 
         if (value.hasOwnProperty("attributes")) {
-            allThings.pop()
+            keyTags.pop()
             let attributeString = ``
 
             for (const attributeKey in value.attributes) {
@@ -142,7 +173,7 @@ function traverse(obj) {
 
             }
 
-            allThings.push([howDeep, `<${key} ${attributeString}>`])
+            keyTags.push([howDeep, `<${key} ${attributeString}>`])
         }
 
         if (typeof value === "object") {
@@ -153,13 +184,13 @@ function traverse(obj) {
                 for (const metaKey in value.meta) {
                         console.log(metaKey)
                     if (metaKey=== "charset") {
-                        allThings.push([howDeep, `<meta charset="${value.meta.charset}>"`])
+                        keyTags.push([howDeep, `<meta charset="${value.meta.charset}>"`])
 
                     } else {
                         for (const nestedMetaKey in value.meta[metaKey]) {
                             //console.log(nestedMetaKey)
                             attributeString += `<meta name="${nestedMetaKey}" content="${value.meta[metaKey]}">`
-                            allThings.push([howDeep, attributeString])
+                            keyTags.push([howDeep, attributeString])
 
                         }
                     }
@@ -171,8 +202,8 @@ function traverse(obj) {
 
             if (Array.isArray(value)) {
 
-                allThings.pop()
-                theKey.pop()
+                keyTags.pop()
+                keyTagsCopy.pop()
 
                 value.forEach((element) => {
                     let lineString = `<${key}`
@@ -181,7 +212,7 @@ function traverse(obj) {
 
                     }
                     lineString += ">"
-                    allThings.push([howDeep, lineString])
+                    keyTags.push([howDeep, lineString])
                 })
                 continue
             }
@@ -189,14 +220,14 @@ function traverse(obj) {
             howDeep++
             traverse(value)
         } else {
-            const popedKey = allThings.pop()
-            const poppedTheKey = theKey.pop()
-            allThings.push([howDeep, `${popedKey[1]}${value}${poppedTheKey[1]}`])
-            theKey.push("filler")
+            const poppedKeyTag = keyTags.pop()
+            const poppedKeyTagCopy = keyTagsCopy.pop()
+            keyTags.push([howDeep, `${poppedKeyTag[1]}${value}${poppedKeyTagCopy[1]}`])
+            keyTagsCopy.push("filler")
         }
 
-        const nestedItem = theKey.pop()
-        allThings.push(nestedItem)
+        const nestedItem = keyTagsCopy.pop()
+        keyTags.push(nestedItem)
     }
     howDeep--
 }
@@ -205,13 +236,13 @@ function traverse(obj) {
 
 traverse(data)
 
-allThings.push([0, "</html>"])
+keyTags.push([0, "</html>"])
 
 function arrayFilterCondition(element) {
     return element !== "filler"
 }
 
-const filteredArray = allThings.filter(arrayFilterCondition)
+const filteredArray = keyTags.filter(arrayFilterCondition)
 console.log(filteredArray)
 
 const finishedArray = filteredArray.map((element) => {
