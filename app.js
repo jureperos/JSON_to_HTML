@@ -1,8 +1,8 @@
 import * as fs from "fs"
 
-const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
+//const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
 //const data = JSON.parse(fs.readFileSync("./primeri/pageNotFound.json"))
-//const data = JSON.parse(fs.readFileSync("./primeri/pageNotFoundV2.json"))
+const data = JSON.parse(fs.readFileSync("./primeri/pageNotFoundV2.json"))
 
 class HtmlParser {
     constructor(jsonData) {
@@ -26,15 +26,16 @@ class HtmlParser {
             this.keyTagsCopy.push([this.howDeep, `</${key}>`])
 
 
+
             if (typeof value === "object") {
 
                 if (key === "meta") {
-                    this.handleMeta(value, obj)
+                    this.handleMeta(value)
                     continue
                 }
 
                 if (Array.isArray(value)) {
-                    this.handleArray(key, value, obj)
+                    this.handleArray(key, value)
                     continue
                 }
                 if (key === "attributes") {
@@ -46,9 +47,7 @@ class HtmlParser {
 
             } else {
                 this.handleValue(value)
-                this.deleteLeaf(key, obj)
             }
-
             const nestedItem = this.keyTagsCopy.pop()
             this.keyTags.push(nestedItem)
         }
@@ -57,24 +56,33 @@ class HtmlParser {
 
     handleAttributes(value) {
         this.keyTags.pop()
+        this.keyTagsCopy.pop()
         const prevTag = this.keyTags.pop()
+        let styleString = ``
         let attributeString = ``
-
-
+        const styleKeyString = "style="
 
         for (const attributeKey in value) {
+
             if (attributeKey === "style")  {
                 for (const styleKey in value.style) {
-                    attributeString += `${styleKey}="${value.style[styleKey]}" `
+                    //console.log("styleKey: ", styleKey, "value.style: ", value.style)
+                    styleString += `${styleKey}:${value.style[styleKey]};`
                 }
+                continue
             }
 
             if (attributeKey != "style" && !value.hasOwnProperty("style")) {
-                attributeString = `${attributeKey}="${value[attributeKey]}" ${attributeString}`
+                styleString = `${attributeKey}="${value[attributeKey]}" ${styleString}`
+                continue
             }
 
+            attributeString += `${attributeKey}="${value[attributeKey]}"`
+
+
+
         }
-        this.keyTags.push([prevTag[0], `${prevTag[1].slice(0, -1)} ${attributeString}>`])
+        this.keyTags.push([prevTag[0], `${prevTag[1].slice(0, -1)} ${attributeString} ${styleKeyString}"${styleString.slice(0, -1)}">`])
     }
 
     handleValue(value) {
@@ -84,10 +92,6 @@ class HtmlParser {
 
         this.keyTags.push([this.howDeep, `${poppedKeyTag[1]}${value}${poppedKeyTagCopy[1]}`])
         this.keyTagsCopy.push([])
-    }
-
-    deleteLeaf(key, obj) {
-        delete obj[key]
     }
 
     handleMeta(value) {
@@ -138,7 +142,6 @@ class HtmlParser {
 
         this.keyTags.pop()
         this.keyTagsCopy.pop()
-        this.keyTagsCopy.push([])
 
         value.forEach((element) => {
             let lineString = `<${key}`
@@ -195,20 +198,19 @@ class HtmlParser {
             return indent + element[1]
         })
 
-        console.log(formattedArray, "\n ____________________________")
-
-        return
+        return formattedArray
     }
 
     parse() {
         this.traverse(this.data)
-        this.formatter()
+        const formatted = this.formatter()
+        console.log(formatted)
+        return formatted
     }
 }
 
 const parser = new HtmlParser(data)
-parser.parse()
-console.log(parser.keyTags)
+const parsedJSON = parser.parse()
 
 
 /*
