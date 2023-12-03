@@ -1,19 +1,19 @@
 import * as fs from "fs"
 
-//const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
+const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
 //const data = JSON.parse(fs.readFileSync("./primeri/pageNotFound.json"))
-const data = JSON.parse(fs.readFileSync("./primeri/pageNotFoundV2.json"))
+//const data = JSON.parse(fs.readFileSync("./primeri/pageNotFoundV2.json"))
 
 class HtmlParser {
     constructor(jsonData) {
         this.data = jsonData
+        this.htmlLang = jsonData?.language
         this.howDeep = 1
         this.keyTags = [[]]
         this.keyTagsCopy = [[]]
         this.metaValueCallCount = 0
         this.metaString = ""
     }
-
     get lastTag() {
         return this.keyTags[this.keyTags.length -1]
     }
@@ -26,11 +26,7 @@ class HtmlParser {
             this.keyTagsCopy.push([this.howDeep, `</${key}>`])
 
 
-            if (obj.doctype === "html") {
-                this.handleHtml(key, value, obj)
-            }
             if (typeof value === "object") {
-                //now rekurzivni klic pomeni da gremo stopnjo globlje
 
                 if (key === "meta") {
                     this.handleMeta(value, obj)
@@ -56,30 +52,7 @@ class HtmlParser {
             const nestedItem = this.keyTagsCopy.pop()
             this.keyTags.push(nestedItem)
         }
-        // Konec enega rekurzivnega klica pomeni, da se globina zmanjša
         this.howDeep--
-    }
-
-    handleHtml(key, value, obj) {
-        console.log(obj)
-        this.howDeep--
-
-        if (obj.hasOwnProperty("language")) {
-            this.keyTags.pop()
-            const doctype = "<!DOCTYPE> html"
-            const htmlString = `<${obj.doctype} lang="${obj.language}">`
-
-            this.keyTags.unshift([this.howDeep, doctype])
-            this.keyTags.push([this.howDeep, htmlString])
-            delete obj.doctype
-            delete obj.language
-        } else {
-            this.keyTags.unshift([this.howDepp - 1, "<!DOCTYPE> html"])
-            this.keyTags.push([this.howDepp - 1, "<html>"])
-            delete obj.doctype
-        }
-
-        this.howDeep++
     }
 
     handleAttributes(value) {
@@ -110,7 +83,7 @@ class HtmlParser {
         const poppedKeyTagCopy = this.keyTagsCopy.pop()
 
         this.keyTags.push([this.howDeep, `${poppedKeyTag[1]}${value}${poppedKeyTagCopy[1]}`])
-        this.keyTagsCopy.push("filler")
+        this.keyTagsCopy.push([])
     }
 
     deleteLeaf(key, obj) {
@@ -143,11 +116,7 @@ class HtmlParser {
     }
 
     handleMetaValue(key, value) {
-        console.log(key, value)
-        console.log(this.metaString)
-
         if (this.metaString) {
-            console.log("what")
             let punctuation = ""
 
             if (this.metaValueCallCount === 1) {
@@ -155,17 +124,13 @@ class HtmlParser {
                 this.metaString += `${key}=${value}` + punctuation
                 this.metaValueCallCount++
             } else if (this.metaValueCallCount > 1){
-                console.log("apwodjawjdawjdpawjdawdjaofsjo")
                 punctuation = "\">"
                 this.metaString += `${key}=${value}` + punctuation
                 this.keyTags.push([this.howDeep, this.metaString])
             }
-
             return
-
         }
-
-        this.keyTags.push([this.howDeep], [`<meta name="${key}" content="${value}"`])
+        this.keyTags.push([this.howDeep, `<meta name="${key}" content="${value}"`])
 
     }
 
@@ -173,7 +138,7 @@ class HtmlParser {
 
         this.keyTags.pop()
         this.keyTagsCopy.pop()
-        this.keyTagsCopy.push("filler")
+        this.keyTagsCopy.push([])
 
         value.forEach((element) => {
             let lineString = `<${key}`
@@ -185,8 +150,59 @@ class HtmlParser {
         })
     }
 
+    formatter() {
+        let setHtml = ""
+        let setLangHtml = this.htmlLang
+        function fillerFilter(element) {
+            return element !== "filler" && element.length
+        }
+
+        function doctypeFilter(element) {
+            const docTest = element[1].includes("doctype")
+            const langTest = element[1].includes("<language>")
+
+            if (docTest) {
+                setHtml = "html"
+                return false
+
+            } else if (langTest && element[0] <= 1) {
+                setLangHtml = `<html lang="${setLangHtml}">`
+                return false
+
+            } else return true
+        }
+
+        let filteredArray = this.keyTags.filter(fillerFilter)
+        filteredArray = filteredArray.filter(doctypeFilter)
+
+        if (setLangHtml) {
+            filteredArray.unshift([0, setLangHtml])
+            filteredArray.unshift([0, "<!DOCTYPE> html"])
+            filteredArray.push([0, "</html>"])
+        } else {
+            filteredArray.unshift([0, "<html>"])
+            filteredArray.unshift([0, "<!DOCTYPE> html"])
+            filteredArray.push([0, "</html>"])
+        }
+
+        const formattedArray = filteredArray.map((element) => {
+            let indent = ""
+            const indentNum = parseInt(element[0])
+            for (let i = 0; i < indentNum; i++) {
+                indent += "    "
+            }
+
+            return indent + element[1]
+        })
+
+        console.log(formattedArray, "\n ____________________________")
+
+        return
+    }
+
     parse() {
         this.traverse(this.data)
+        this.formatter()
     }
 }
 
