@@ -1,13 +1,21 @@
 import * as fs from "fs"
 
-const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
+//const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
+//const data = JSON.parse(fs.readFileSync("./primeri/pageNotFound.json"))
+const data = JSON.parse(fs.readFileSync("./primeri/pageNotFoundV2.json"))
 
 class HtmlParser {
     constructor(jsonData) {
         this.data = jsonData
-        this.howDeep = 0
+        this.howDeep = 1
         this.keyTags = [[]]
         this.keyTagsCopy = [[]]
+        this.metaValueCallCount = 0
+        this.metaString = ""
+    }
+
+    get lastTag() {
+        return this.keyTags[this.keyTags.length -1]
     }
 
     traverse(obj) {
@@ -18,22 +26,85 @@ class HtmlParser {
             this.keyTagsCopy.push([this.howDeep, `</${key}>`])
 
 
+            if (obj.doctype === "html") {
+                this.handleHtml(key, value, obj)
+            }
             if (typeof value === "object") {
                 //now rekurzivni klic pomeni da gremo stopnjo globlje
-                if (key === "meta") {this.handleMeta(key, value)}
-                this.howDeep--
+
+                if (key === "meta") {
+                    this.handleMeta(value, obj)
+                    continue
+                }
+
+                if (Array.isArray(value)) {
+                    this.handleArray(key, value, obj)
+                    continue
+                }
+                if (key === "attributes") {
+                    this.handleAttributes(value)
+                    continue
+                }
+                this.howDeep++
                 this.traverse(value)
 
             } else {
-                this.handleValue(key, value)
+                this.handleValue(value)
                 this.deleteLeaf(key, obj)
             }
+
+            const nestedItem = this.keyTagsCopy.pop()
+            this.keyTags.push(nestedItem)
         }
         // Konec enega rekurzivnega klica pomeni, da se globina zmanjša
+        this.howDeep--
+    }
+
+    handleHtml(key, value, obj) {
+        console.log(obj)
+        this.howDeep--
+
+        if (obj.hasOwnProperty("language")) {
+            this.keyTags.pop()
+            const doctype = "<!DOCTYPE> html"
+            const htmlString = `<${obj.doctype} lang="${obj.language}">`
+
+            this.keyTags.unshift([this.howDeep, doctype])
+            this.keyTags.push([this.howDeep, htmlString])
+            delete obj.doctype
+            delete obj.language
+        } else {
+            this.keyTags.unshift([this.howDepp - 1, "<!DOCTYPE> html"])
+            this.keyTags.push([this.howDepp - 1, "<html>"])
+            delete obj.doctype
+        }
+
         this.howDeep++
     }
 
-    handleValue(key, value) {
+    handleAttributes(value) {
+        this.keyTags.pop()
+        const prevTag = this.keyTags.pop()
+        let attributeString = ``
+
+
+
+        for (const attributeKey in value) {
+            if (attributeKey === "style")  {
+                for (const styleKey in value.style) {
+                    attributeString += `${styleKey}="${value.style[styleKey]}" `
+                }
+            }
+
+            if (attributeKey != "style" && !value.hasOwnProperty("style")) {
+                attributeString = `${attributeKey}="${value[attributeKey]}" ${attributeString}`
+            }
+
+        }
+        this.keyTags.push([prevTag[0], `${prevTag[1].slice(0, -1)} ${attributeString}>`])
+    }
+
+    handleValue(value) {
 
         const poppedKeyTag = this.keyTags.pop()
         const poppedKeyTagCopy = this.keyTagsCopy.pop()
@@ -46,58 +117,72 @@ class HtmlParser {
         delete obj[key]
     }
 
-    handleMeta(key, value) {
-        this.howDeep--
+    handleMeta(value) {
 
-        const lastTag = this.keyTags[this.keyTags.length -1][1]
-        if (lastTag === "<meta>") {
+        if (this.lastTag[1] === "<meta>") {
             this.keyTags.pop()
+            this.keyTagsCopy.pop()
         }
 
         for (const metaKey in value) {
             const metaValue = value[metaKey]
-            console.log("metakey: ", metaKey, "metaValue: ", metaValue, "value: ", value)
 
             if (metaKey === "charset") {
                 this.keyTags.push([this.howDeep, `<meta charset="${metaValue}>"`])
-                this.deleteLeaf(metaKey, value)
+
             } else if (typeof metaValue === "object") {
-
-                this.keyTags.push([this.howDeep, metaKey])
-                this.howDeep++
-                this.handleMeta("kmet", metaValue)
-
+                this.metaValueCallCount++
+                this.metaString = `<meta name="${metaKey}" content="`
+                this.handleMeta(metaValue)
 
             } else {
-                console.log(this.keyTags)
-                //console.log(metaKey, value)
-
-                console.log(metaKey, value)
-                this.handleMetaValue(metaKey, value)
-                this.deleteLeaf(metaKey, value)
+                this.handleMetaValue(metaKey, metaValue)
             }
-
         }
-        this.howDeep++
+
     }
 
     handleMetaValue(key, value) {
-        this.keyTags.push(this.howDeep, `<meta name="${key}" content="${value[key]}"`)
+        console.log(key, value)
+        console.log(this.metaString)
+
+        if (this.metaString) {
+            console.log("what")
+            let punctuation = ""
+
+            if (this.metaValueCallCount === 1) {
+                punctuation = ", "
+                this.metaString += `${key}=${value}` + punctuation
+                this.metaValueCallCount++
+            } else if (this.metaValueCallCount > 1){
+                console.log("apwodjawjdawjdpawjdawdjaofsjo")
+                punctuation = "\">"
+                this.metaString += `${key}=${value}` + punctuation
+                this.keyTags.push([this.howDeep, this.metaString])
+            }
+
+            return
+
+        }
+
+        this.keyTags.push([this.howDeep], [`<meta name="${key}" content="${value}"`])
 
     }
 
     handleArray(key, value) {
 
+        this.keyTags.pop()
+        this.keyTagsCopy.pop()
+        this.keyTagsCopy.push("filler")
+
         value.forEach((element) => {
             let lineString = `<${key}`
             for (const elementKey in element) {
                 lineString += ` ${elementKey}="${element[elementKey]}"`
-
             }
             lineString += ">"
             this.keyTags.push([this.howDeep, lineString])
         })
-
     }
 
     parse() {
