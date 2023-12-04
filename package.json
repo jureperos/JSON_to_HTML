@@ -1,13 +1,12 @@
 {
   "name": "flawlesscode",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "JSON to HTML parser",
+  "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "type": "module",
   "keywords": [],
-  "author": "",
+  "author": "Jure Peroš",
   "license": "ISC"
 }
