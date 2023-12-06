@@ -1,44 +1,44 @@
 import * as fs from "fs"
 
-const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
+//const data = JSON.parse(fs.readFileSync("./primeri/helloWorld.json"))
 //const data = JSON.parse(fs.readFileSync("./primeri/pageNotFound.json"))
-//const data = JSON.parse(fs.readFileSync("./primeri/pageNotFoundV2.json"))
+const data = JSON.parse(fs.readFileSync("./primeri/pageNotFoundV2.json"))
 
 class HtmlParser {
     constructor(jsonData) {
         this.data = jsonData
         this.htmlLang = jsonData.language
-        this.howDeep = 1
         this.keyTags = [[]]
-        this.keyTagsCopy = [[]]
-        this.metaValueCallCount = 0
-        this.metaString = ""
-        this.filteredData = []
-        this.formattedData = []
+        this.closeTagRef = [[]]
     }
 
     get lastTag() {
         return this.keyTags[this.keyTags.length -1]
     }
     // Glavna rekurzivna funkcija
-    traverse(obj) {
+    traverse(obj, nodeDepth) {
+
         for (const key in obj) {
             const value = obj[key]
 
             // Polja kjer se shranjujejo HTML oznake in odnosi med njimi
             // Kopija hrani končne oznake
-            this.keyTags.push([this.howDeep, `<${key}>`])
-            this.keyTagsCopy.push([this.howDeep, `</${key}>`])
+            this.keyTags.push([nodeDepth, `<${key}>`])
+            this.closeTagRef.push([nodeDepth, `</${key}>`])
+
+            if (key === "doctype") {
+                this.handleDoctype(key, obj)
+            }
 
             if (typeof value === "object") {
 
                 // Stavki obravnavajo posebne oznake (npr. samozapiralne)
                 if (key === "meta") {
-                    this.handleMeta(value)
+                    this.handleMeta(value, nodeDepth)
                     continue
                 }
                 if (Array.isArray(value)) {
-                    this.handleArray(key, value)
+                    this.handleArray(key, value, nodeDepth)
                     continue
                 }
                 if (key === "attributes") {
@@ -47,58 +47,70 @@ class HtmlParser {
                 }
 
                 // Števec globine objektov/oznak
-                this.howDeep++
-                this.traverse(value)
+                nodeDepth++
+                this.traverse(value, nodeDepth)
 
             } else {
                 // Metoda za obravnavo listov podatkovnega drevesa
-                this.handleValue(value)
+                this.handleValue(value, nodeDepth)
             }
             // Dodajanje zapiralnih oznak
-            const nestedItem = this.keyTagsCopy.pop()
+            const nestedItem = this.closeTagRef.pop()
             this.keyTags.push(nestedItem)
         }
-        this.howDeep--
-    }
+        nodeDepth--
 
-    formatArray() {
-        this.filterData()
-        this.formatData()
     }
 
     filterData() {
-        this.filterFiller()
-        this.filterDoctype()
-        this.handleDoctype()
+        const filterFillerData = this.filterFiller()
+        const filterDoctypeData = this.filterDoctype(filterFillerData)
+        const filteredDoctypeData = this.handleHtmlTags(filterDoctypeData)
+        return filteredDoctypeData
+    }
+
+    formatArray() {
+        const filteredData = this.filterData()
+        const formattedData = this.formatData(filteredData)
+        return formattedData
     }
 
     parse() {
-        this.traverse(this.data)
-        this.formatArray()
-        return this.formattedData.join("\n")
+        this.traverse(this.data, 1)
+        const formattedArray = this.formatArray()
+        return formattedArray.join("\n")
     }
 
-    write(path, stringData) {
+    HTMLwrite(path, stringData) {
         fs.writeFileSync(`${path}`, stringData)
     }
 
+    handleDoctype(key, obj) {
+        if (obj[key] !== "html") {
+            console.warn(
+                `Nepričakovan doctype format!\nPričakovan: html\tNajden: ${obj[key]}`
+            )
+        }
 
-    handleValue(value) {
-
-        const poppedKeyTag = this.keyTags.pop()
-        const poppedKeyTagCopy = this.keyTagsCopy.pop()
-
-        this.keyTags.push(
-            [this.howDeep, `${poppedKeyTag[1]}${value}${poppedKeyTagCopy[1]}`]
-        )
-        this.keyTagsCopy.push([])
     }
 
-    handleMeta(value) {
+
+    handleValue(value, leafDepth) {
+
+        const poppedKeyTag = this.keyTags.pop()
+        const poppedCloseTagRef = this.closeTagRef.pop()
+
+        this.keyTags.push(
+            [leafDepth, `${poppedKeyTag[1]}${value}${poppedCloseTagRef[1]}`]
+        )
+        this.closeTagRef.push([])
+    }
+
+    handleMeta(value, metaDepth, metaValueCallCount = 0, metaString = "") {
 
         if (this.lastTag[1] === "<meta>") {
             this.keyTags.pop()
-            this.keyTagsCopy.pop()
+            this.closeTagRef.pop()
         }
 
         for (const metaKey in value) {
@@ -106,44 +118,60 @@ class HtmlParser {
 
             if (metaKey === "charset") {
                 this.keyTags.push(
-                    [this.howDeep, `<meta charset="${metaValue}">`]
+                    [metaDepth, `<meta charset="${metaValue}">`]
                 )
 
             } else if (typeof metaValue === "object") {
-                this.metaValueCallCount++
-                this.metaString = `<meta name="${metaKey}" content="`
-                this.handleMeta(metaValue)
+                metaValueCallCount++
+                metaString = `<meta name="${metaKey}" content="`
+                this.handleMeta(metaValue, metaDepth, metaValueCallCount, metaString)
 
             } else {
-                this.handleMetaValue(metaKey, metaValue)
+                const [returnedMetaCallCount, returnedMetaString] = this.handleMetaValue(
+                    metaKey,
+                    metaValue,
+                    metaDepth,
+                    metaValueCallCount,
+                    metaString
+                )
+
+                metaValueCallCount = returnedMetaCallCount
+                metaString = returnedMetaString
             }
         }
     }
 
-    handleMetaValue(key, value) {
-        if (this.metaString) {
+    handleMetaValue(key, value, metaDepth, metaCallCount, metaString) {
+        if (metaString) {
             let punctuation = ""
 
-            if (this.metaValueCallCount === 1) {
+            if (metaCallCount === 1) {
                 punctuation = ", "
-                this.metaString += `${key}=${value}` + punctuation
-                this.metaValueCallCount++
-            } else if (this.metaValueCallCount > 1){
+                metaString += `${key}=${value}` + punctuation
+                metaCallCount++
+            } else if (metaCallCount > 1){
                 punctuation = "\">"
-                this.metaString += `${key}=${value}` + punctuation
-                this.keyTags.push([this.howDeep, this.metaString])
+                metaString += `${key}=${value}` + punctuation
+                this.keyTags.push([metaDepth, metaString])
             }
-            return
+
+            return [metaCallCount, metaString]
         }
+
         this.keyTags.push(
-            [this.howDeep, `<meta name="${key}" content="${value}"`]
+            [metaDepth, `<meta name="${key}" content="${value}">`]
         )
+
+        if (metaCallCount) {
+            return metaCallCount, metaString
+        } else return [0, ""]
+
     }
 
-    handleArray(key, value) {
+    handleArray(key, value, arrayDepth) {
 
         this.keyTags.pop()
-        this.keyTagsCopy.pop()
+        this.closeTagRef.pop()
 
         value.forEach((element) => {
             let lineString = `<${key}`
@@ -151,13 +179,13 @@ class HtmlParser {
                 lineString += ` ${elementKey}="${element[elementKey]}"`
             }
             lineString += ">"
-            this.keyTags.push([this.howDeep, lineString])
+            this.keyTags.push([arrayDepth, lineString])
         })
     }
 
     handleAttributes(value) {
         this.keyTags.pop()
-        this.keyTagsCopy.pop()
+        this.closeTagRef.pop()
         const prevTag = this.keyTags.pop()
         let styleString = ``
         let attributeString = ``
@@ -183,8 +211,21 @@ class HtmlParser {
         )
     }
 
-    formatData() {
-        this.formattedData = this.filteredData.map((element) => {
+    handleHtmlTags(filteredData) {
+        if (this.htmlLang) {
+            filteredData.unshift([0, `<html lang="${this.htmlLang}">`])
+            filteredData.unshift([0, "<!DOCTYPE html>"])
+            filteredData.push([0, "</html>"])
+        } else {
+            filteredData.unshift([0, "<html>"])
+            filteredData.unshift([0, "<!DOCTYPE html>"])
+            filteredData.push([0, "</html>"])
+        }
+        return filteredData
+    }
+
+    formatData(filteredData) {
+        const formattedData = filteredData.map((element) => {
             let indent = ""
             const indentNum = parseInt(element[0])
             for (let i = 0; i < indentNum; i++) {
@@ -192,28 +233,19 @@ class HtmlParser {
             }
             return indent + element[1]
         })
-    }
-
-    handleDoctype() {
-        if (this.htmlLang) {
-            this.filteredData.unshift([0, `<html lang="${this.htmlLang}">`])
-            this.filteredData.unshift([0, "<!DOCTYPE html>"])
-            this.filteredData.push([0, "</html>"])
-        } else {
-            this.filteredData.unshift([0, "<html>"])
-            this.filteredData.unshift([0, "<!DOCTYPE html>"])
-            this.filteredData.push([0, "</html>"])
-        }
+        return formattedData
     }
 
     filterFiller() {
-        this.filteredData = this.keyTags.filter((element) => {
+        const filterFillerData = this.keyTags.filter((element) => {
             return element !== "filler" && element.length
         })
+
+        return filterFillerData
     }
 
-    filterDoctype() {
-        this.filteredData = this.filteredData.filter((element) => {
+    filterDoctype(filterFillerData) {
+        const filterDoctypeData = filterFillerData.filter((element) => {
             const docTest = element[1].includes("doctype")
             const langTest = element[1].includes("<language>")
 
@@ -223,9 +255,14 @@ class HtmlParser {
                 return false
             } else return true
         })
+
+        return filterDoctypeData
     }
 }
 
+
 const parser = new HtmlParser(data)
 const parsedJSON = parser.parse()
-parser.write("./dajMarkup.html", parsedJSON)
+console.log(parsedJSON)
+parser.HTMLwrite("./dajMarkup.html", parsedJSON)
+
