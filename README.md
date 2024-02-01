@@ -1,4 +1,3 @@
-# JSON_to_HTML
+# JSON to HTML parser
 
-Kodo se zažene z "node app.js". 
-Pretvarjanje različnih datotek zaenkrat poteka ročno s spreminjanjem poti do datoteke.
+To run the parser choose a path to the provided exmaples manualy in the code (or provide your own) and run the code with "node app.js"
